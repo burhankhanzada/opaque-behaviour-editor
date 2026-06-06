@@ -49,26 +49,10 @@ public class CodeCompletionProvider {
     private Table proposalTable;
     private final boolean darkTheme;
 
-    /** Sorted set of all completable words for the current language. */
     private TreeSet<String> completionWords = new TreeSet<>();
-    private TreeSet<String> extraWords = new TreeSet<>();
     private LanguageDef currentLangDef;
-    private Map<String, Map<String, String>> typeMembers = new HashMap<>();
-    
-    private Map<String, EObject> globalElements = new HashMap<>();
-    private Map<String, Map<String, EObject>> classElements = new HashMap<>();
+    private final UmlModelDictionary dictionary;
     private ISelectionProvider selectionProvider;
-
-    public static class ErrorRange {
-        public final int offset;
-        public final int length;
-        public final String message;
-        public ErrorRange(int offset, int length, String message) {
-            this.offset = offset;
-            this.length = length;
-            this.message = message;
-        }
-    }
 
     /** Tracks whether we're currently inserting a completion (to avoid re-triggering). */
     private boolean inserting = false;
@@ -79,39 +63,12 @@ public class CodeCompletionProvider {
     /** Maximum number of proposals shown. */
     private static final int MAX_PROPOSALS = 15;
     
-    private static final String[] COMMON_METHODS = {
-        "add", "remove", "clear", "size", "empty", "front", "back", "insert", "erase", 
-        "push_back", "pop_back", "begin", "end", "find", "count", "length", "substr", "at"
-    };
 
-    private static final String[] MDE4CPP_COLLECTION_METHODS = {
-        "add", "insert", "remove", "erase", "clear", "size", "empty", 
-        "front", "back", "begin", "end", "at"
-    };
 
-    public static class Snippet {
-        public final String keyword;
-        public final String label;
-        public final String template;
-        public final String placeholder;
-        public Snippet(String keyword, String label, String template, String placeholder) {
-            this.keyword = keyword;
-            this.label = label;
-            this.template = template;
-            this.placeholder = placeholder;
-        }
-    }
-
-    private static final List<Snippet> SNIPPETS = new ArrayList<>();
-    static {
-        SNIPPETS.add(new Snippet("create", "⚡ create (Template)", "std::shared_ptr<Type> name = factory->createType();", "Type"));
-        SNIPPETS.add(new Snippet("for", "⚡ for (Template)", "for(std::shared_ptr<Type> item : *collection) {\n\t\n}", "Type"));
-        SNIPPETS.add(new Snippet("cast", "⚡ cast (Template)", "std::shared_ptr<Type> casted = std::dynamic_pointer_cast<Type>(var);", "Type"));
-    }
-
-    public CodeCompletionProvider(StyledText styledText, String language) {
+    public CodeCompletionProvider(StyledText styledText, String language, UmlModelDictionary dictionary) {
         this.styledText = styledText;
         this.darkTheme = isDarkTheme(styledText.getDisplay());
+        this.dictionary = dictionary;
         setLanguage(language);
         attachListeners();
     }
@@ -122,26 +79,7 @@ public class CodeCompletionProvider {
         rebuildCompletionWords();
     }
 
-    public void setExtraWords(Set<String> extraWords) {
-        this.extraWords.clear();
-        if (extraWords != null) {
-            this.extraWords.addAll(extraWords);
-        }
-        rebuildCompletionWords();
-    }
-
-    public void setTypeMembers(Map<String, Map<String, String>> typeMembers) {
-        this.typeMembers.clear();
-        if (typeMembers != null) {
-            this.typeMembers.putAll(typeMembers);
-        }
-    }
-
-    public void setHyperlinkElements(Map<String, EObject> global, Map<String, Map<String, EObject>> classes, ISelectionProvider provider) {
-        this.globalElements.clear();
-        this.classElements.clear();
-        if (global != null) this.globalElements.putAll(global);
-        if (classes != null) this.classElements.putAll(classes);
+    public void setHyperlinkElements(ISelectionProvider provider) {
         this.selectionProvider = provider;
     }
 
@@ -151,7 +89,7 @@ public class CodeCompletionProvider {
             for (String kw : currentLangDef.keywords) completionWords.add(kw);
             for (String tp : currentLangDef.types)    completionWords.add(tp);
         }
-        completionWords.addAll(extraWords);
+        completionWords.addAll(dictionary.autocompleteWords);
         dismissPopup();
     }
 
@@ -352,8 +290,8 @@ public class CodeCompletionProvider {
         Set<String> allowedMembers = null;
         
         // Add Snippets at the very top of the list!
-        if (!isMemberAccess && currentLangDef != null && currentLangDef.name.equals("C++")) {
-            for (Snippet snip : SNIPPETS) {
+        if (currentLangDef != null && currentLangDef.name.equals("C++") && !isMemberAccess) {
+            for (SnippetLibrary.Snippet snip : SnippetLibrary.SNIPPETS) {
                 if (snip.keyword.toLowerCase().startsWith(lower)) {
                     if (!matches.contains(snip.label)) {
                         matches.add(snip.label);
@@ -364,11 +302,11 @@ public class CodeCompletionProvider {
         
         if (isMemberAccess) {
             allowedMembers = new TreeSet<>();
-            for (Map<String, String> members : typeMembers.values()) {
+            for (Map<String, String> members : dictionary.typeMembers.values()) {
                 allowedMembers.addAll(members.keySet());
             }
             if (currentLangDef != null && currentLangDef.name.equals("C++")) {
-                for (String m : COMMON_METHODS) allowedMembers.add(m);
+                for (String m : UmlModelValidator.COMMON_METHODS) allowedMembers.add(m);
             }
             
             String contextType = resolveContextType();
@@ -378,9 +316,9 @@ public class CodeCompletionProvider {
                     contextType.startsWith("OrderedSet<") || contextType.startsWith("Sequence<") ||
                     contextType.startsWith("Union<") || contextType.startsWith("SubsetUnion<")) {
                     allowedMembers.clear(); // Only suggest collection methods
-                    for (String m : MDE4CPP_COLLECTION_METHODS) allowedMembers.add(m);
-                } else if (typeMembers.containsKey(contextType)) {
-                    allowedMembers = new TreeSet<>(typeMembers.get(contextType).keySet());
+                    for (String m : UmlModelValidator.MDE4CPP_COLLECTION_METHODS) allowedMembers.add(m);
+                } else if (dictionary.typeMembers.containsKey(contextType)) {
+                    allowedMembers = new TreeSet<>(dictionary.typeMembers.get(contextType).keySet());
                 }
             }
         }
@@ -488,8 +426,8 @@ public class CodeCompletionProvider {
                 currentType = resolveVariableType(part);
             } else {
                 // Method or property on currentType
-                if (currentType != null && typeMembers.containsKey(currentType)) {
-                    Map<String, String> members = typeMembers.get(currentType);
+                if (currentType != null && dictionary.typeMembers.containsKey(currentType)) {
+                    Map<String, String> members = dictionary.typeMembers.get(currentType);
                     currentType = members.get(part); // Get the return type!
                 } else {
                     currentType = null;
@@ -511,11 +449,11 @@ public class CodeCompletionProvider {
             if (contextType.startsWith("std::shared_ptr<")) {
                 contextType = contextType.substring(16, contextType.length() - 1);
             }
-            if (classElements.containsKey(contextType)) {
-                return classElements.get(contextType).get(word);
+            if (dictionary.classElements.containsKey(contextType)) {
+                return dictionary.classElements.get(contextType).get(word);
             }
         } else {
-            return globalElements.get(word);
+            return dictionary.globalElements.get(word);
         }
         return null;
     }
@@ -544,133 +482,6 @@ public class CodeCompletionProvider {
         }
         
         return null;
-    }
-
-    public List<ErrorRange> validateUMLMemberAccess() {
-        List<ErrorRange> errors = new ArrayList<>();
-        if (currentLangDef == null || !currentLangDef.name.equals("C++")) {
-            return errors;
-        }
-        
-        String text = styledText.getText();
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile("->[ \\t]*([A-Za-z0-9_]+)");
-        java.util.regex.Matcher m = p.matcher(text);
-        
-        while (m.find()) {
-            String methodName = m.group(1);
-            int methodOffset = m.start(1);
-            int methodLength = methodName.length();
-            
-            String textBefore = text.substring(0, m.start() + 2);
-            String rawType = resolveContextTypeFromText(textBefore);
-            
-            if (rawType != null) {
-                boolean isCollection = rawType.startsWith("Bag<") || rawType.startsWith("Set<") || 
-                                       rawType.startsWith("OrderedSet<") || rawType.startsWith("Sequence<") ||
-                                       rawType.startsWith("Union<") || rawType.startsWith("SubsetUnion<");
-                                       
-                if (rawType.startsWith("std::shared_ptr<")) {
-                    rawType = rawType.substring(16, rawType.length() - 1);
-                }
-                
-                boolean isValid = false;
-                
-                if (isCollection) {
-                    for (String cm : MDE4CPP_COLLECTION_METHODS) {
-                        if (cm.equals(methodName)) { isValid = true; break; }
-                    }
-                } else if (classElements.containsKey(rawType) || typeMembers.containsKey(rawType)) {
-                    Map<String, String> members = typeMembers.get(rawType);
-                    if (members != null && members.containsKey(methodName)) {
-                        isValid = true;
-                    }
-                    if (!isValid) {
-                        for (String cm : COMMON_METHODS) {
-                            if (cm.equals(methodName)) { isValid = true; break; }
-                        }
-                    }
-                } else {
-                    isValid = true;
-                }
-                
-                if (!isValid) {
-                    errors.add(new ErrorRange(methodOffset, methodLength, "Method '" + methodName + "' is not defined in UML class '" + rawType + "'"));
-                }
-            }
-        }
-        return errors;
-    }
-
-    private static final Set<String> STD_TYPES = Set.of(
-        "std", "shared_ptr", "weak_ptr", "unique_ptr", "dynamic_pointer_cast",
-        "Bag", "Set", "OrderedSet", "Sequence", "Union", "SubsetUnion"
-    );
-
-    public List<ErrorRange> getUMLTypeRanges() {
-        List<ErrorRange> ranges = new ArrayList<>();
-        if (currentLangDef == null || !currentLangDef.name.equals("C++") || typeMembers.isEmpty()) {
-            return ranges;
-        }
-        
-        String text = styledText.getText();
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile("\\b([A-Za-z0-9_]+)\\b");
-        java.util.regex.Matcher m = p.matcher(text);
-        
-        while (m.find()) {
-            String word = m.group(1);
-            if (typeMembers.containsKey(word) || STD_TYPES.contains(word)) {
-                ranges.add(new ErrorRange(m.start(1), word.length(), null));
-            }
-        }
-        return ranges;
-    }
-
-    public List<ErrorRange> getVariableRanges() {
-        List<ErrorRange> ranges = new ArrayList<>();
-        if (currentLangDef == null || !currentLangDef.name.equals("C++")) return ranges;
-        
-        String text = styledText.getText();
-        Set<String> vars = new java.util.HashSet<>();
-        vars.add("factory"); // Always highlight factory
-        
-        java.util.regex.Pattern p1 = java.util.regex.Pattern.compile("std::(?:weak|shared|unique)_ptr<[^>]+>\\s+([A-Za-z0-9_]+)\\b");
-        java.util.regex.Matcher m1 = p1.matcher(text);
-        while (m1.find()) vars.add(m1.group(1));
-        
-        java.util.regex.Pattern p2 = java.util.regex.Pattern.compile("\\b([A-Za-z0-9_:]+)\\s*\\**\\s+([A-Za-z0-9_]+)\\s*(?:=|;)");
-        java.util.regex.Matcher m2 = p2.matcher(text);
-        while (m2.find()) {
-            String t = m2.group(1);
-            if (!t.equals("return") && !t.equals("new") && !t.equals("delete")) {
-                vars.add(m2.group(2));
-            }
-        }
-        
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile("\\b([A-Za-z0-9_]+)\\b");
-        java.util.regex.Matcher m = p.matcher(text);
-        while (m.find()) {
-            String word = m.group(1);
-            if (vars.contains(word) && !typeMembers.containsKey(word) && !STD_TYPES.contains(word)) {
-                ranges.add(new ErrorRange(m.start(1), word.length(), null));
-            }
-        }
-        return ranges;
-    }
-
-    public List<ErrorRange> getMethodRanges() {
-        List<ErrorRange> ranges = new ArrayList<>();
-        if (currentLangDef == null || !currentLangDef.name.equals("C++")) return ranges;
-        
-        String text = styledText.getText();
-        java.util.regex.Pattern p = java.util.regex.Pattern.compile("\\b([A-Za-z0-9_]+)\\s*\\(");
-        java.util.regex.Matcher m = p.matcher(text);
-        while (m.find()) {
-            String word = m.group(1);
-            if (!typeMembers.containsKey(word) && !STD_TYPES.contains(word)) {
-                ranges.add(new ErrorRange(m.start(1), word.length(), null));
-            }
-        }
-        return ranges;
     }
 
     /** Extracts the identifier being typed at the current caret position. */
@@ -782,14 +593,15 @@ public class CodeCompletionProvider {
 
         inserting = true;
         try {
-            Snippet matchedSnippet = null;
-            for (Snippet s : SNIPPETS) {
-                if (s.label.equals(selected)) {
-                    matchedSnippet = s;
-                    break;
+            SnippetLibrary.Snippet matchedSnippet = null;
+            if (currentLangDef != null && currentLangDef.name.equals("C++")) {
+                for (SnippetLibrary.Snippet s : SnippetLibrary.SNIPPETS) {
+                    if (s.label.equals(selected)) {
+                        matchedSnippet = s;
+                        break;
+                    }
                 }
             }
-            
             if (matchedSnippet != null) {
                 styledText.replaceTextRange(prefixStart, caretOffset - prefixStart, matchedSnippet.template);
                 int placeholderIndex = matchedSnippet.template.indexOf(matchedSnippet.placeholder);

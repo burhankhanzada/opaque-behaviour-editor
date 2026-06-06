@@ -72,10 +72,7 @@ public class OpenBodyEditorHandler extends AbstractHandler {
 
         // ---- collect model context types and completion words ----
         Set<String> contextTypes = new HashSet<>();
-        Set<String> autocompleteWords = new HashSet<>();
-        Map<String, Map<String, String>> typeMembers = new HashMap<>();
-        Map<String, EObject> globalElements = new HashMap<>();
-        Map<String, Map<String, EObject>> classElements = new HashMap<>();
+        UmlModelDictionary dictionary = new UmlModelDictionary();
         
         IWorkbenchPart activePart = HandlerUtil.getActivePart(event);
         org.eclipse.jface.viewers.ISelectionProvider selectionProvider = 
@@ -89,16 +86,16 @@ public class OpenBodyEditorHandler extends AbstractHandler {
                     String typeName = t.getName();
                     if (typeName != null && !typeName.isBlank()) {
                         contextTypes.add(typeName);
-                        autocompleteWords.add(typeName);
-                        globalElements.put(typeName, t);
+                        dictionary.autocompleteWords.add(typeName);
+                        dictionary.globalElements.put(typeName, t);
                     }
                 }
                 
                 if (obj instanceof org.eclipse.uml2.uml.Classifier classifier) {
                     String className = classifier.getName();
                     if (className != null && !className.isBlank()) {
-                        Map<String, String> members = typeMembers.computeIfAbsent(className, k -> new HashMap<>());
-                        Map<String, EObject> elemMembers = classElements.computeIfAbsent(className, k -> new HashMap<>());
+                        Map<String, String> members = dictionary.typeMembers.computeIfAbsent(className, k -> new HashMap<>());
+                        Map<String, EObject> elemMembers = dictionary.classElements.computeIfAbsent(className, k -> new HashMap<>());
                         for (org.eclipse.uml2.uml.Property p : classifier.getAllAttributes()) {
                             String pName = p.getName();
                             if (pName != null && !pName.isBlank()) {
@@ -143,27 +140,27 @@ public class OpenBodyEditorHandler extends AbstractHandler {
                 if (obj instanceof org.eclipse.uml2.uml.Operation op) {
                     String opName = op.getName();
                     if (opName != null && !opName.isBlank()) {
-                        autocompleteWords.add(opName);
-                        globalElements.put(opName, op);
+                        dictionary.autocompleteWords.add(opName);
+                        dictionary.globalElements.put(opName, op);
                     }
                 }
                 if (obj instanceof org.eclipse.uml2.uml.Property p) {
                     String pName = p.getName();
                     if (pName != null && !pName.isBlank()) {
-                        autocompleteWords.add(pName);
-                        globalElements.put(pName, p);
+                        dictionary.autocompleteWords.add(pName);
+                        dictionary.globalElements.put(pName, p);
                         String cap = pName.substring(0, 1).toUpperCase() + pName.substring(1);
-                        autocompleteWords.add("get" + cap);
-                        globalElements.put("get" + cap, p);
-                        autocompleteWords.add("set" + cap);
-                        globalElements.put("set" + cap, p);
+                        dictionary.autocompleteWords.add("get" + cap);
+                        dictionary.globalElements.put("get" + cap, p);
+                        dictionary.autocompleteWords.add("set" + cap);
+                        dictionary.globalElements.put("set" + cap, p);
                         
                         if (p.getType() != null && p.getOwner() instanceof org.eclipse.uml2.uml.NamedElement owner) {
                             String typeName = p.getType().getName();
                             String ownerName = owner.getName();
                             if (typeName != null && ownerName != null) {
-                                autocompleteWords.add("create" + typeName + "_as_" + pName + "_in_" + ownerName);
-                                globalElements.put("create" + typeName + "_as_" + pName + "_in_" + ownerName, p);
+                                dictionary.autocompleteWords.add("create" + typeName + "_as_" + pName + "_in_" + ownerName);
+                                dictionary.globalElements.put("create" + typeName + "_as_" + pName + "_in_" + ownerName, p);
                             }
                         }
                     }
@@ -172,7 +169,7 @@ public class OpenBodyEditorHandler extends AbstractHandler {
         }
 
         OpaqueBehaviorBodyDialog dialog =
-                new OpaqueBehaviorBodyDialog(shell, bodies, languages, name, contextTypes, autocompleteWords, typeMembers, globalElements, classElements, selectionProvider);
+                new OpaqueBehaviorBodyDialog(shell, bodies, languages, name, contextTypes, dictionary, selectionProvider);
 
         if (dialog.open() != Window.OK) {
             return null;

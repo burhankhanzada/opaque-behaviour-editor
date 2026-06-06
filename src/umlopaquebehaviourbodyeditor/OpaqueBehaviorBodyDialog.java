@@ -64,11 +64,11 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
     private TMPresentationReconciler tmReconciler;
     private CodeCompletionProvider completionProvider;
     private final Set<String> contextTypes;
-    private final Set<String> autocompleteWords;
-    private final Map<String, Map<String, String>> typeMembers;
-    private final Map<String, EObject> globalElements;
-    private final Map<String, Map<String, EObject>> classElements;
+    private final UmlModelDictionary dictionary;
     private final ISelectionProvider selectionProvider;
+    
+    private final SemanticHighlighter semanticHighlighter;
+    private final UmlModelValidator modelValidator;
 
     private boolean suppressListener = false;
 
@@ -77,20 +77,16 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
                                     List<String> languages,
                                     String name,
                                     Set<String> contextTypes,
-                                    Set<String> autocompleteWords,
-                                    Map<String, Map<String, String>> typeMembers,
-                                    Map<String, EObject> globalElements,
-                                    Map<String, Map<String, EObject>> classElements,
+                                    UmlModelDictionary dictionary,
                                     ISelectionProvider selectionProvider) {
         super(parentShell);
         setShellStyle(getShellStyle() | SWT.RESIZE | SWT.MAX);
         this.behaviourName = name;
         this.contextTypes = contextTypes;
-        this.autocompleteWords = autocompleteWords;
-        this.typeMembers = typeMembers;
-        this.globalElements = globalElements;
-        this.classElements = classElements;
+        this.dictionary = dictionary;
         this.selectionProvider = selectionProvider;
+        this.semanticHighlighter = new SemanticHighlighter(dictionary);
+        this.modelValidator = new UmlModelValidator(dictionary);
 
         for (int i = 0; i < bodies.size(); i++) {
             String lang = (i < languages.size()) ? languages.get(i) : "";
@@ -327,43 +323,37 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         }
 
         // Code Completion
-        completionProvider = new CodeCompletionProvider(codeText, "");
-        if (autocompleteWords != null) {
-            completionProvider.setExtraWords(autocompleteWords);
-        }
-        if (typeMembers != null) {
-            completionProvider.setTypeMembers(typeMembers);
-        }
-        completionProvider.setHyperlinkElements(globalElements, classElements, selectionProvider);
+        completionProvider = new CodeCompletionProvider(codeText, "", dictionary);
+        completionProvider.setHyperlinkElements(selectionProvider);
 
         if (sourceViewer instanceof org.eclipse.jface.text.ITextViewerExtension4 ext4) {
             ext4.addTextPresentationListener(new org.eclipse.jface.text.ITextPresentationListener() {
                 @Override
                 public void applyTextPresentation(org.eclipse.jface.text.TextPresentation textPresentation) {
                     // Type Highlighting
-                    java.util.List<CodeCompletionProvider.ErrorRange> typeRanges = completionProvider.getUMLTypeRanges();
-                    for (CodeCompletionProvider.ErrorRange tr : typeRanges) {
+                    java.util.List<TextRange> typeRanges = semanticHighlighter.getUMLTypeRanges(codeText.getText(), LanguageMapping.getLanguageDef(languageCombo.getText()));
+                    for (TextRange tr : typeRanges) {
                         org.eclipse.swt.custom.StyleRange style = new org.eclipse.swt.custom.StyleRange(tr.offset, tr.length, umlTypeColor, null);
                         textPresentation.mergeStyleRange(style);
                     }
                     
                     // Method Highlighting
-                    java.util.List<CodeCompletionProvider.ErrorRange> methodRanges = completionProvider.getMethodRanges();
-                    for (CodeCompletionProvider.ErrorRange mr : methodRanges) {
+                    java.util.List<TextRange> methodRanges = semanticHighlighter.getMethodRanges(codeText.getText(), LanguageMapping.getLanguageDef(languageCombo.getText()));
+                    for (TextRange mr : methodRanges) {
                         org.eclipse.swt.custom.StyleRange style = new org.eclipse.swt.custom.StyleRange(mr.offset, mr.length, methodColor, null);
                         textPresentation.mergeStyleRange(style);
                     }
                     
                     // Variable Highlighting
-                    java.util.List<CodeCompletionProvider.ErrorRange> varRanges = completionProvider.getVariableRanges();
-                    for (CodeCompletionProvider.ErrorRange vr : varRanges) {
+                    java.util.List<TextRange> varRanges = semanticHighlighter.getVariableRanges(codeText.getText(), LanguageMapping.getLanguageDef(languageCombo.getText()));
+                    for (TextRange vr : varRanges) {
                         org.eclipse.swt.custom.StyleRange style = new org.eclipse.swt.custom.StyleRange(vr.offset, vr.length, variableColor, null);
                         textPresentation.mergeStyleRange(style);
                     }
                     
                     // Errors
-                    java.util.List<CodeCompletionProvider.ErrorRange> errors = completionProvider.validateUMLMemberAccess();
-                    for (CodeCompletionProvider.ErrorRange err : errors) {
+                    java.util.List<TextRange> errors = modelValidator.validateUMLMemberAccess(codeText.getText(), LanguageMapping.getLanguageDef(languageCombo.getText()));
+                    for (TextRange err : errors) {
                         org.eclipse.swt.custom.StyleRange style = new org.eclipse.swt.custom.StyleRange(err.offset, err.length, null, null);
                         style.underline = true;
                         style.underlineStyle = org.eclipse.swt.SWT.UNDERLINE_ERROR;
@@ -491,16 +481,6 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
     }
 
     // ---- Inner types ----
-
-    static final class BodyEntry {
-        String language;
-        String body;
-        BodyEntry(String language, String body) {
-            this.language = language;
-            this.body = body;
-        }
-    }
-
     private class BodyEntryLabelProvider extends LabelProvider {
         @Override
         public String getText(Object element) {

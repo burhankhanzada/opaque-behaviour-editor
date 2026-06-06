@@ -174,6 +174,45 @@ public class CodeCompletionProvider {
                 });
             }
         });
+
+        // ---- MDE4CPP Smart Pointers: auto '.' to '->' ----
+        styledText.addVerifyListener(e -> {
+            if (inserting) return;
+            if (e.text.equals(".") && currentLangDef != null && currentLangDef.name.equals("C++")) {
+                String textBefore = styledText.getText().substring(0, e.start) + ".";
+                String type = resolveContextTypeFromText(textBefore);
+                if (type != null) {
+                    e.text = "->";
+                }
+            }
+        });
+
+        // ---- MDE4CPP Smart Pointers: Hover tooltips ----
+        styledText.addMouseMoveListener(e -> {
+            try {
+                int offset = styledText.getOffsetAtLocation(new Point(e.x, e.y));
+                String text = styledText.getText();
+                int start = offset;
+                int end = offset;
+                while (start > 0 && Character.isJavaIdentifierPart(text.charAt(start - 1))) start--;
+                while (end < text.length() && Character.isJavaIdentifierPart(text.charAt(end))) end++;
+                if (start < end) {
+                    String word = text.substring(start, end);
+                    String type = resolveVariableType(word);
+                    if (type != null && currentLangDef != null && currentLangDef.name.equals("C++")) {
+                        // Special MDE4CPP tooltip
+                        styledText.setToolTipText("std::shared_ptr<" + type + ">");
+                        return;
+                    } else if (type != null) {
+                        styledText.setToolTipText(type);
+                        return;
+                    }
+                }
+            } catch (IllegalArgumentException ex) {
+                // Mouse is not over valid text
+            }
+            styledText.setToolTipText(null);
+        });
     }
 
     // ------------------------------------------------------------------
@@ -290,7 +329,10 @@ public class CodeCompletionProvider {
             start--;
         }
         String textBeforeCaret = text.substring(0, start).stripTrailing();
-        
+        return resolveContextTypeFromText(textBeforeCaret);
+    }
+
+    private String resolveContextTypeFromText(String textBeforeCaret) {
         if (textBeforeCaret.endsWith("->")) {
             textBeforeCaret = textBeforeCaret.substring(0, textBeforeCaret.length() - 2);
         } else if (textBeforeCaret.endsWith(".")) {

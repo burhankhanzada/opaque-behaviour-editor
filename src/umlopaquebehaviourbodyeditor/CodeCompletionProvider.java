@@ -55,6 +55,11 @@ public class CodeCompletionProvider {
 
     /** Maximum number of proposals shown. */
     private static final int MAX_PROPOSALS = 15;
+    
+    private static final String[] COMMON_METHODS = {
+        "add", "remove", "clear", "size", "empty", "front", "back", "insert", "erase", 
+        "push_back", "pop_back", "begin", "end", "find", "count", "length", "substr"
+    };
 
     public CodeCompletionProvider(StyledText styledText, String language) {
         this.styledText = styledText;
@@ -194,13 +199,24 @@ public class CodeCompletionProvider {
         List<String> matches = new ArrayList<>();
         String lower = prefix.toLowerCase();
 
-        String variable = getMemberAccessVariable();
+        boolean isMemberAccess = isMemberAccessContext();
         Set<String> allowedMembers = null;
         
-        if (variable != null) {
-            String type = resolveVariableType(variable);
-            if (type != null && typeMembers.containsKey(type)) {
-                allowedMembers = typeMembers.get(type);
+        if (isMemberAccess) {
+            allowedMembers = new TreeSet<>();
+            for (Set<String> members : typeMembers.values()) {
+                allowedMembers.addAll(members);
+            }
+            if (currentLangDef != null && currentLangDef.name.equals("C++")) {
+                for (String m : COMMON_METHODS) allowedMembers.add(m);
+            }
+            
+            String variable = getMemberAccessVariable();
+            if (variable != null) {
+                String type = resolveVariableType(variable);
+                if (type != null && typeMembers.containsKey(type)) {
+                    allowedMembers = typeMembers.get(type);
+                }
             }
         }
 
@@ -224,7 +240,32 @@ public class CodeCompletionProvider {
             }
         }
         
+        // If it's a member access but we didn't find enough matches, inject the allowed members directly
+        if (isMemberAccess && matches.size() < MAX_PROPOSALS && allowedMembers != null) {
+            for (String am : allowedMembers) {
+                if (am.toLowerCase().startsWith(lower) && !matches.contains(am)) {
+                    matches.add(am);
+                    if (matches.size() >= MAX_PROPOSALS) break;
+                }
+            }
+        }
+        
         return matches;
+    }
+    
+    private boolean isMemberAccessContext() {
+        int caretOffset = styledText.getCaretOffset();
+        String text = styledText.getText();
+        int start = caretOffset;
+        while (start > 0 && Character.isJavaIdentifierPart(text.charAt(start - 1))) {
+            start--;
+        }
+        int ptr = start - 1;
+        while (ptr >= 0 && Character.isWhitespace(text.charAt(ptr))) ptr--;
+        
+        if (ptr >= 0 && text.charAt(ptr) == '.') return true;
+        if (ptr >= 1 && text.charAt(ptr) == '>' && text.charAt(ptr-1) == '-') return true;
+        return false;
     }
 
     private String getMemberAccessVariable() {

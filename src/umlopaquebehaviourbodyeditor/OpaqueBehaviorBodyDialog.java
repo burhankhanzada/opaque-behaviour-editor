@@ -226,15 +226,54 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         monoFont = new Font(display, new FontData("Menlo", 12, SWT.NORMAL));
         codeText.setFont(monoFont);
         codeText.setTabs(4);
+        
+        // Add left margin to reserve space for line numbers
+        codeText.setMargins(45, 5, 5, 5);
 
-        // Dark theme background
+        // Theme-specific colors
         boolean dark = isDarkTheme(display);
+        final Color lineNumColor;
+        final Color separatorColor;
+        
         if (dark) {
             codeText.setBackground(new Color(new RGB(30, 30, 30)));
             codeText.setForeground(new Color(new RGB(212, 212, 212)));
             codeText.setSelectionBackground(new Color(new RGB(38, 79, 120)));
             codeText.setSelectionForeground(new Color(new RGB(255, 255, 255)));
+            lineNumColor = new Color(new RGB(133, 133, 133));
+            separatorColor = new Color(new RGB(64, 64, 64));
+        } else {
+            lineNumColor = new Color(new RGB(43, 145, 175));
+            separatorColor = new Color(new RGB(200, 200, 200));
         }
+
+        // Draw line numbers
+        codeText.addPaintListener(e -> {
+            int topIndex = codeText.getTopIndex();
+            int lineHeight = codeText.getLineHeight();
+            int visibleLines = (codeText.getClientArea().height + lineHeight - 1) / lineHeight;
+            int bottomIndex = Math.min(topIndex + visibleLines, codeText.getLineCount() - 1);
+            
+            e.gc.setForeground(lineNumColor);
+            
+            for (int i = topIndex; i <= bottomIndex; i++) {
+                int linePixel = codeText.getLinePixel(i);
+                String num = String.valueOf(i + 1);
+                Point extent = e.gc.stringExtent(num);
+                // Right align within the left 45px margin area
+                e.gc.drawString(num, 38 - extent.x, linePixel, true);
+            }
+            
+            // Draw a separator line between numbers and text
+            e.gc.setForeground(separatorColor);
+            e.gc.drawLine(42, 0, 42, codeText.getClientArea().height);
+        });
+
+        // Clean up colors
+        codeText.addDisposeListener(e -> {
+            if (lineNumColor != null) lineNumColor.dispose();
+            if (separatorColor != null) separatorColor.dispose();
+        });
 
         // Syntax highlighter
         highlighter = new SyntaxHighlighter(codeText, "");

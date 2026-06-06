@@ -44,7 +44,11 @@ import org.eclipse.swt.widgets.Shell;
  */
 public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
 
-    private final List<BodyEntry> entries = new ArrayList<>();
+    private org.eclipse.swt.graphics.Color umlTypeColor;
+    private org.eclipse.swt.graphics.Color methodColor;
+    private org.eclipse.swt.graphics.Color variableColor;
+
+    private List<BodyEntry> entries = new ArrayList<>();
     private final String behaviourName;
     private int selectedIndex = -1;
 
@@ -300,7 +304,14 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         codeText.addDisposeListener(e -> {
             if (lineNumColor != null) lineNumColor.dispose();
             if (separatorColor != null) separatorColor.dispose();
+            if (umlTypeColor != null) umlTypeColor.dispose();
+            if (methodColor != null) methodColor.dispose();
+            if (variableColor != null) variableColor.dispose();
         });
+
+        umlTypeColor = new org.eclipse.swt.graphics.Color(codeText.getDisplay(), 78, 201, 176);
+        methodColor = new org.eclipse.swt.graphics.Color(codeText.getDisplay(), 220, 220, 170);
+        variableColor = new org.eclipse.swt.graphics.Color(codeText.getDisplay(), 156, 220, 254);
 
         // TM4E Reconciler
         try {
@@ -329,6 +340,28 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
             ext4.addTextPresentationListener(new org.eclipse.jface.text.ITextPresentationListener() {
                 @Override
                 public void applyTextPresentation(org.eclipse.jface.text.TextPresentation textPresentation) {
+                    // Type Highlighting
+                    java.util.List<CodeCompletionProvider.ErrorRange> typeRanges = completionProvider.getUMLTypeRanges();
+                    for (CodeCompletionProvider.ErrorRange tr : typeRanges) {
+                        org.eclipse.swt.custom.StyleRange style = new org.eclipse.swt.custom.StyleRange(tr.offset, tr.length, umlTypeColor, null);
+                        textPresentation.mergeStyleRange(style);
+                    }
+                    
+                    // Method Highlighting
+                    java.util.List<CodeCompletionProvider.ErrorRange> methodRanges = completionProvider.getMethodRanges();
+                    for (CodeCompletionProvider.ErrorRange mr : methodRanges) {
+                        org.eclipse.swt.custom.StyleRange style = new org.eclipse.swt.custom.StyleRange(mr.offset, mr.length, methodColor, null);
+                        textPresentation.mergeStyleRange(style);
+                    }
+                    
+                    // Variable Highlighting
+                    java.util.List<CodeCompletionProvider.ErrorRange> varRanges = completionProvider.getVariableRanges();
+                    for (CodeCompletionProvider.ErrorRange vr : varRanges) {
+                        org.eclipse.swt.custom.StyleRange style = new org.eclipse.swt.custom.StyleRange(vr.offset, vr.length, variableColor, null);
+                        textPresentation.mergeStyleRange(style);
+                    }
+                    
+                    // Errors
                     java.util.List<CodeCompletionProvider.ErrorRange> errors = completionProvider.validateUMLMemberAccess();
                     for (CodeCompletionProvider.ErrorRange err : errors) {
                         org.eclipse.swt.custom.StyleRange style = new org.eclipse.swt.custom.StyleRange(err.offset, err.length, null, null);

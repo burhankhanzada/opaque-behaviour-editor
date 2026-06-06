@@ -601,6 +601,78 @@ public class CodeCompletionProvider {
         return errors;
     }
 
+    private static final Set<String> STD_TYPES = Set.of(
+        "std", "shared_ptr", "weak_ptr", "unique_ptr", "dynamic_pointer_cast",
+        "Bag", "Set", "OrderedSet", "Sequence", "Union", "SubsetUnion"
+    );
+
+    public List<ErrorRange> getUMLTypeRanges() {
+        List<ErrorRange> ranges = new ArrayList<>();
+        if (currentLangDef == null || !currentLangDef.name.equals("C++") || typeMembers.isEmpty()) {
+            return ranges;
+        }
+        
+        String text = styledText.getText();
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile("\\b([A-Za-z0-9_]+)\\b");
+        java.util.regex.Matcher m = p.matcher(text);
+        
+        while (m.find()) {
+            String word = m.group(1);
+            if (typeMembers.containsKey(word) || STD_TYPES.contains(word)) {
+                ranges.add(new ErrorRange(m.start(1), word.length(), null));
+            }
+        }
+        return ranges;
+    }
+
+    public List<ErrorRange> getVariableRanges() {
+        List<ErrorRange> ranges = new ArrayList<>();
+        if (currentLangDef == null || !currentLangDef.name.equals("C++")) return ranges;
+        
+        String text = styledText.getText();
+        Set<String> vars = new java.util.HashSet<>();
+        vars.add("factory"); // Always highlight factory
+        
+        java.util.regex.Pattern p1 = java.util.regex.Pattern.compile("std::(?:weak|shared|unique)_ptr<[^>]+>\\s+([A-Za-z0-9_]+)\\b");
+        java.util.regex.Matcher m1 = p1.matcher(text);
+        while (m1.find()) vars.add(m1.group(1));
+        
+        java.util.regex.Pattern p2 = java.util.regex.Pattern.compile("\\b([A-Za-z0-9_:]+)\\s*\\**\\s+([A-Za-z0-9_]+)\\s*(?:=|;)");
+        java.util.regex.Matcher m2 = p2.matcher(text);
+        while (m2.find()) {
+            String t = m2.group(1);
+            if (!t.equals("return") && !t.equals("new") && !t.equals("delete")) {
+                vars.add(m2.group(2));
+            }
+        }
+        
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile("\\b([A-Za-z0-9_]+)\\b");
+        java.util.regex.Matcher m = p.matcher(text);
+        while (m.find()) {
+            String word = m.group(1);
+            if (vars.contains(word) && !typeMembers.containsKey(word) && !STD_TYPES.contains(word)) {
+                ranges.add(new ErrorRange(m.start(1), word.length(), null));
+            }
+        }
+        return ranges;
+    }
+
+    public List<ErrorRange> getMethodRanges() {
+        List<ErrorRange> ranges = new ArrayList<>();
+        if (currentLangDef == null || !currentLangDef.name.equals("C++")) return ranges;
+        
+        String text = styledText.getText();
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile("\\b([A-Za-z0-9_]+)\\s*\\(");
+        java.util.regex.Matcher m = p.matcher(text);
+        while (m.find()) {
+            String word = m.group(1);
+            if (!typeMembers.containsKey(word) && !STD_TYPES.contains(word)) {
+                ranges.add(new ErrorRange(m.start(1), word.length(), null));
+            }
+        }
+        return ranges;
+    }
+
     /** Extracts the identifier being typed at the current caret position. */
     private String getCurrentPrefix() {
         int caretOffset = styledText.getCaretOffset();

@@ -59,6 +59,17 @@ public class CodeCompletionProvider {
     private Map<String, Map<String, EObject>> classElements = new HashMap<>();
     private ISelectionProvider selectionProvider;
 
+    public static class ErrorRange {
+        public final int offset;
+        public final int length;
+        public final String message;
+        public ErrorRange(int offset, int length, String message) {
+            this.offset = offset;
+            this.length = length;
+            this.message = message;
+        }
+    }
+
     /** Tracks whether we're currently inserting a completion (to avoid re-triggering). */
     private boolean inserting = false;
 
@@ -498,6 +509,61 @@ public class CodeCompletionProvider {
         }
         
         return null;
+    }
+
+    public List<ErrorRange> validateUMLMemberAccess() {
+        List<ErrorRange> errors = new ArrayList<>();
+        if (currentLangDef == null || !currentLangDef.name.equals("C++")) {
+            return errors;
+        }
+        
+        String text = styledText.getText();
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile("->[ \\t]*([A-Za-z0-9_]+)");
+        java.util.regex.Matcher m = p.matcher(text);
+        
+        while (m.find()) {
+            String methodName = m.group(1);
+            int methodOffset = m.start(1);
+            int methodLength = methodName.length();
+            
+            String textBefore = text.substring(0, m.start() + 2);
+            String rawType = resolveContextTypeFromText(textBefore);
+            
+            if (rawType != null) {
+                boolean isCollection = rawType.startsWith("Bag<") || rawType.startsWith("Set<") || 
+                                       rawType.startsWith("OrderedSet<") || rawType.startsWith("Sequence<") ||
+                                       rawType.startsWith("Union<") || rawType.startsWith("SubsetUnion<");
+                                       
+                if (rawType.startsWith("std::shared_ptr<")) {
+                    rawType = rawType.substring(16, rawType.length() - 1);
+                }
+                
+                boolean isValid = false;
+                
+                if (isCollection) {
+                    for (String cm : MDE4CPP_COLLECTION_METHODS) {
+                        if (cm.equals(methodName)) { isValid = true; break; }
+                    }
+                } else if (classElements.containsKey(rawType) || typeMembers.containsKey(rawType)) {
+                    Map<String, String> members = typeMembers.get(rawType);
+                    if (members != null && members.containsKey(methodName)) {
+                        isValid = true;
+                    }
+                    if (!isValid) {
+                        for (String cm : COMMON_METHODS) {
+                            if (cm.equals(methodName)) { isValid = true; break; }
+                        }
+                    }
+                } else {
+                    isValid = true;
+                }
+                
+                if (!isValid) {
+                    errors.add(new ErrorRange(methodOffset, methodLength, "Method '" + methodName + "' is not defined in UML class '" + rawType + "'"));
+                }
+            }
+        }
+        return errors;
     }
 
     /** Extracts the identifier being typed at the current caret position. */

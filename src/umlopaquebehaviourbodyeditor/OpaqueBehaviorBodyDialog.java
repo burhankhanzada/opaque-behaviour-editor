@@ -325,6 +325,22 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         }
         completionProvider.setHyperlinkElements(globalElements, classElements, selectionProvider);
 
+        if (sourceViewer instanceof org.eclipse.jface.text.ITextViewerExtension4 ext4) {
+            ext4.addTextPresentationListener(new org.eclipse.jface.text.ITextPresentationListener() {
+                @Override
+                public void applyTextPresentation(org.eclipse.jface.text.TextPresentation textPresentation) {
+                    java.util.List<CodeCompletionProvider.ErrorRange> errors = completionProvider.validateUMLMemberAccess();
+                    for (CodeCompletionProvider.ErrorRange err : errors) {
+                        org.eclipse.swt.custom.StyleRange style = new org.eclipse.swt.custom.StyleRange(err.offset, err.length, null, null);
+                        style.underline = true;
+                        style.underlineStyle = org.eclipse.swt.SWT.UNDERLINE_ERROR;
+                        style.underlineColor = codeText.getDisplay().getSystemColor(org.eclipse.swt.SWT.COLOR_RED);
+                        textPresentation.mergeStyleRange(style);
+                    }
+                }
+            });
+        }
+
         // Re-highlight on every text change
         codeText.addModifyListener(e -> {
             if (!suppressListener) {

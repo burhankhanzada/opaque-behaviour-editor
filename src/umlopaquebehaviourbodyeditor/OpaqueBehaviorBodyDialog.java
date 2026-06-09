@@ -36,7 +36,6 @@ import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Shell;
-import org.eclipse.swt.internal.cocoa.*;
 
 /**
  * Dialog for editing the body entries of a UML OpaqueBehaviour.
@@ -44,14 +43,6 @@ import org.eclipse.swt.internal.cocoa.*;
  * keyword-based syntax highlighting — no JFace Text dependency.
  */
 public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
-
-    private org.eclipse.swt.graphics.Color umlTypeColor;
-    private org.eclipse.swt.graphics.Color methodColor;
-    private org.eclipse.swt.graphics.Color variableColor;
-
-    private List<BodyEntry> entries = new ArrayList<>();
-    private final String behaviourName;
-    private int selectedIndex = -1;
 
     private TableViewer entryViewer;
     private SourceViewer sourceViewer;
@@ -61,8 +52,6 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
     private Button removeButton;
     private Button upButton;
     private Button downButton;
-    private Font monoFont;
-    private TMPresentationReconciler tmReconciler;
     private CodeCompletionProvider completionProvider;
     private final Set<String> contextTypes;
     private final UmlModelDictionary dictionary;
@@ -70,6 +59,7 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
     
     private final SemanticHighlighter semanticHighlighter;
     private final UmlModelValidator modelValidator;
+    private final CodeEditorConfigurator editorConfigurator;
 
     private boolean suppressListener = false;
 
@@ -88,6 +78,7 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         this.selectionProvider = selectionProvider;
         this.semanticHighlighter = new SemanticHighlighter(dictionary);
         this.modelValidator = new UmlModelValidator(dictionary);
+        this.editorConfigurator = new CodeEditorConfigurator(this.semanticHighlighter, this.modelValidator);
 
         for (int i = 0; i < bodies.size(); i++) {
             String lang = (i < languages.size()) ? languages.get(i) : "";
@@ -160,11 +151,8 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
 
     @Override
     public boolean close() {
-        if (monoFont != null && !monoFont.isDisposed()) {
-            monoFont.dispose();
-        }
-        if (tmReconciler != null) {
-            tmReconciler.uninstall();
+        if (editorConfigurator != null) {
+            editorConfigurator.dispose();
         }
         if (completionProvider != null) {
             completionProvider.dispose();
@@ -187,7 +175,7 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         tvGD.heightHint = 90;
         entryViewer.getTable().setLayoutData(tvGD);
         entryViewer.setContentProvider(ArrayContentProvider.getInstance());
-        entryViewer.setLabelProvider(new BodyEntryLabelProvider());
+        entryViewer.setLabelProvider(new BodyEntryLabelProvider(entries));
         entryViewer.setInput(entries);
         entryViewer.addSelectionChangedListener(event -> {
             BodyEntry sel = (BodyEntry) event.getStructuredSelection().getFirstElement();
@@ -204,10 +192,10 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         btnCol.setLayout(new GridLayout(1, true));
         btnCol.setLayoutData(new GridData(SWT.CENTER, SWT.TOP, false, false));
 
-        addButton    = createPushButton(btnCol, "Add");
-        removeButton = createPushButton(btnCol, "Remove");
-        upButton     = createPushButton(btnCol, "Up");
-        downButton   = createPushButton(btnCol, "Down");
+        addButton    = ThemeUtils.createPushButton(btnCol, "Add");
+        removeButton = ThemeUtils.createPushButton(btnCol, "Remove");
+        upButton     = ThemeUtils.createPushButton(btnCol, "Up");
+        downButton   = ThemeUtils.createPushButton(btnCol, "Down");
 
         addButton.addListener(SWT.Selection, e -> onAdd());
         removeButton.addListener(SWT.Selection, e -> onRemove());
@@ -226,12 +214,12 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         languageCombo = new Combo(row, SWT.DROP_DOWN | SWT.READ_ONLY);
         languageCombo.setItems(LanguageMapping.getAllLanguageNames());
         languageCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-        if (isDarkTheme(parent)) fixComboDarkTheme(languageCombo);
+        if (ThemeUtils.isDarkTheme(parent)) ThemeUtils.fixComboDarkTheme(languageCombo);
         
         languageCombo.addModifyListener(e -> {
             if (selectedIndex >= 0 && selectedIndex < entries.size() && !suppressListener) {
                 entries.get(selectedIndex).language = languageCombo.getText();
-                updateSyntaxLanguage(languageCombo.getText());
+                editorConfigurator.updateSyntaxLanguage(languageCombo.getText(), codeText);
                 if (completionProvider != null) completionProvider.setLanguage(languageCombo.getText());
                 entryViewer.refresh();
             }
@@ -252,7 +240,7 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         Combo targetLanguageCombo = new Combo(row, SWT.DROP_DOWN | SWT.READ_ONLY);
         targetLanguageCombo.setItems(LanguageMapping.getAllLanguageNames());
         if (targetLanguageCombo.getItemCount() > 0) targetLanguageCombo.select(0);
-        if (isDarkTheme(parent)) fixComboDarkTheme(targetLanguageCombo);
+        if (ThemeUtils.isDarkTheme(parent)) ThemeUtils.fixComboDarkTheme(targetLanguageCombo);
 
         Button translateBtn = new Button(row, SWT.PUSH);
         translateBtn.setText("Translate");
@@ -271,9 +259,6 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         });
     }
 
-    // Helper method no longer needed for Combo
-    // private void setLanguageComboText(String lang) {}
-
     /**
      * Creates the code editor section containing a StyledText widget wrapped in a SourceViewer.
      * This avoids heavy JFace Text dependencies while still allowing TM4E integration.
@@ -291,16 +276,7 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         gd.widthHint  = 600;
         codeText.setLayoutData(gd);
 
-        // Prevent ESC from closing the dialog while in the code editor
-        codeText.addTraverseListener(e -> {
-            if (e.detail == SWT.TRAVERSE_ESCAPE) {
-                e.doit = false;
-            }
-        });
-
-        setupEditorFontAndColors(parent);
-        setupLineNumbers();
-        setupSyntaxHighlighting();
+        editorConfigurator.configure(parent, sourceViewer);
 
         // Code Completion
         completionProvider = new CodeCompletionProvider(codeText, "", dictionary);
@@ -315,161 +291,6 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
                 }
             }
         });
-    }
-
-    private void setupEditorFontAndColors(Composite parent) {
-        Display display = parent.getDisplay();
-        // Monospace font
-        monoFont = new Font(display, new FontData("Menlo", 12, SWT.NORMAL));
-        codeText.setFont(monoFont);
-        codeText.setTabs(4);
-        
-        // Add left margin to reserve space for line numbers
-        codeText.setMargins(45, 5, 5, 5);
-
-        // Theme-specific colors
-        boolean dark = isDarkTheme(parent);
-        final Color lineNumColor;
-        final Color separatorColor;
-        
-        if (dark) {
-            Color darkBg = new Color(display, new RGB(30, 30, 30));
-            Color darkFg = new Color(display, new RGB(212, 212, 212));
-            Color darkSelBg = new Color(display, new RGB(38, 79, 120));
-            Color darkSelFg = new Color(display, new RGB(255, 255, 255));
-            
-            // TODO: Fix this issue upstream in the Eclipse IDE itself.
-            // WORKAROUND: The Eclipse E4 CSS engine runs a delayed layout pass on macOS that 
-            // aggressively overwrites StyledText backgrounds back to the OS-default grey.
-            // Trick 1: We assign a dummy CSS ID so the engine's generic StyledText rules ignore this widget.
-            codeText.setData("org.eclipse.e4.ui.css.id", "UMLOpaqueBehaviourEditorText");
-            
-            codeText.setBackground(darkBg);
-            codeText.setForeground(darkFg);
-            codeText.setSelectionBackground(darkSelBg);
-            codeText.setSelectionForeground(darkSelFg);
-            
-            // Trick 2: We forcefully re-apply the background asynchronously (after the event loop processes 
-            // the initial Shell layout) to guarantee our dark background survives any late CSS styling.
-            display.asyncExec(() -> {
-                if (codeText != null && !codeText.isDisposed()) {
-                    codeText.setBackground(darkBg);
-                    codeText.setForeground(darkFg);
-                    codeText.setSelectionBackground(darkSelBg);
-                    codeText.setSelectionForeground(darkSelFg);
-                }
-            });
-            
-            lineNumColor = new Color(display, new RGB(133, 133, 133));
-            separatorColor = new Color(display, new RGB(64, 64, 64));
-            
-            umlTypeColor = new org.eclipse.swt.graphics.Color(display, 78, 201, 176);
-            methodColor = new org.eclipse.swt.graphics.Color(display, 220, 220, 170);
-            variableColor = new org.eclipse.swt.graphics.Color(display, 156, 220, 254);
-        } else {
-            lineNumColor = new Color(display, new RGB(43, 145, 175));
-            separatorColor = new Color(display, new RGB(200, 200, 200));
-            
-            // VS Code light theme semantic colors
-            umlTypeColor = new org.eclipse.swt.graphics.Color(display, 38, 127, 153); // Dark teal (#267f99)
-            methodColor = new org.eclipse.swt.graphics.Color(display, 121, 94, 38);   // Dark yellow/brown (#795e26)
-            variableColor = new org.eclipse.swt.graphics.Color(display, 0, 16, 128);  // Dark blue (#001080)
-        }
-
-        // Clean up colors
-        codeText.addDisposeListener(e -> {
-            if (lineNumColor != null) lineNumColor.dispose();
-            if (separatorColor != null) separatorColor.dispose();
-            if (umlTypeColor != null) umlTypeColor.dispose();
-            if (methodColor != null) methodColor.dispose();
-            if (variableColor != null) variableColor.dispose();
-        });
-        
-        // Save these for line number painter
-        codeText.setData("lineNumColor", lineNumColor);
-        codeText.setData("separatorColor", separatorColor);
-    }
-
-    private void setupLineNumbers() {
-        Color lineNumColor = (Color) codeText.getData("lineNumColor");
-        Color separatorColor = (Color) codeText.getData("separatorColor");
-        
-        // Draw line numbers inside the reserved left margin
-        codeText.addPaintListener(new LineNumberPainter(codeText, lineNumColor, separatorColor));
-    }
-
-    private void setupSyntaxHighlighting() {
-        // Initialize TM4E Reconciler for generic syntax highlighting (keywords, strings, etc.)
-        try {
-            tmReconciler = new TMPresentationReconciler();
-            sourceViewer.configure(new SourceViewerConfiguration() {
-                @Override
-                public IPresentationReconciler getPresentationReconciler(org.eclipse.jface.text.source.ISourceViewer sourceViewer) {
-                    return tmReconciler;
-                }
-            });
-        } catch (Throwable t) {
-            t.printStackTrace();
-        }
-
-        if (sourceViewer instanceof org.eclipse.jface.text.ITextViewerExtension4 ext4) {
-            // Apply semantic highlighting (custom colors for UML types, methods, and variables)
-            // AFTER the TM4E grammar has been applied, overriding it where necessary.
-            ext4.addTextPresentationListener(new org.eclipse.jface.text.ITextPresentationListener() {
-                @Override
-                public void applyTextPresentation(org.eclipse.jface.text.TextPresentation textPresentation) {
-                    // Type Highlighting
-                    java.util.List<TextRange> typeRanges = semanticHighlighter.getUMLTypeRanges(codeText.getText(), LanguageMapping.getLanguageDef(languageCombo.getText()));
-                    for (TextRange tr : typeRanges) {
-                        org.eclipse.swt.custom.StyleRange style = new org.eclipse.swt.custom.StyleRange(tr.offset, tr.length, umlTypeColor, null);
-                        textPresentation.mergeStyleRange(style);
-                    }
-                    
-                    // Method Highlighting
-                    java.util.List<TextRange> methodRanges = semanticHighlighter.getMethodRanges(codeText.getText(), LanguageMapping.getLanguageDef(languageCombo.getText()));
-                    for (TextRange mr : methodRanges) {
-                        org.eclipse.swt.custom.StyleRange style = new org.eclipse.swt.custom.StyleRange(mr.offset, mr.length, methodColor, null);
-                        textPresentation.mergeStyleRange(style);
-                    }
-                    
-                    // Variable Highlighting
-                    java.util.List<TextRange> varRanges = semanticHighlighter.getVariableRanges(codeText.getText(), LanguageMapping.getLanguageDef(languageCombo.getText()));
-                    for (TextRange vr : varRanges) {
-                        org.eclipse.swt.custom.StyleRange style = new org.eclipse.swt.custom.StyleRange(vr.offset, vr.length, variableColor, null);
-                        textPresentation.mergeStyleRange(style);
-                    }
-                    
-                    // Errors
-                    java.util.List<TextRange> errors = modelValidator.validateUMLMemberAccess(codeText.getText(), LanguageMapping.getLanguageDef(languageCombo.getText()));
-                    errors.addAll(modelValidator.validateSyntax(codeText.getText(), LanguageMapping.getLanguageDef(languageCombo.getText())));
-                    
-                    for (TextRange err : errors) {
-                        org.eclipse.swt.custom.StyleRange style = new org.eclipse.swt.custom.StyleRange(err.offset, err.length, null, null);
-                        style.underline = true;
-                        style.underlineStyle = org.eclipse.swt.SWT.UNDERLINE_ERROR;
-                        style.underlineColor = codeText.getDisplay().getSystemColor(org.eclipse.swt.SWT.COLOR_RED);
-                        textPresentation.mergeStyleRange(style);
-                    }
-                }
-            });
-        }
-    }
-
-    private void updateSyntaxLanguage(String lang) {
-        if (tmReconciler == null) return;
-        try {
-            String lower = lang == null ? "" : lang.toLowerCase();
-            String ext = "txt";
-            if (lower.startsWith("c++") || lower.equals("cpp")) ext = "cpp";
-            else if (lower.equals("java")) ext = "java";
-            else if (lower.equals("python") || lower.equals("py")) ext = "py";
-            else if (lower.equals("c") || lower.matches("c[0-9]+")) ext = "c";
-            
-            IGrammar grammar = TMEclipseRegistryPlugin.getGrammarRegistryManager().getGrammarForFileExtension(ext);
-            tmReconciler.setGrammar(grammar);
-        } catch (Throwable t) {
-            t.printStackTrace();
-        }
     }
 
     // ---- Entry operations ----
@@ -498,45 +319,6 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
             entryViewer.getTable().select(newIdx);
             loadEntry(newIdx);
         }
-        updateButtonStates();
-    }
-
-    /**
-     * WORKAROUND: Eclipse Mac Dark Theme Bug.
-     * In Eclipse Dark Theme on macOS, SWT.READ_ONLY Combos render their dropdown menus
-     * natively but fail to invert the text color, making the items look black/dark-grey 
-     * on a dark background (appearing disabled). 
-     * 
-     * This method uses internal Cocoa bindings to explicitly rewrite the NSAttributedString 
-     * foreground color to pure white on the underlying NSPopUpButton menu items.
-     */
-    private static void fixComboDarkTheme(Combo combo) {
-        if (!System.getProperty("os.name").toLowerCase().contains("mac")) return;
-
-        try {
-            NSPopUpButton button = new NSPopUpButton(combo.view.id);
-            NSMenu menu = button.menu();
-            if (menu == null) return;
-            NSArray items = menu.itemArray();
-
-            long count = items.count();
-            for (int i = 0; i < count; i++) {
-                NSMenuItem item = new NSMenuItem(items.objectAtIndex(i));
-
-                // Build white attributed string
-                NSMutableDictionary attrs = NSMutableDictionary.dictionaryWithCapacity(1);
-                NSColor white = NSColor.colorWithDeviceRed(1.0, 1.0, 1.0, 1.0);
-                attrs.setObject(white, OS.NSForegroundColorAttributeName);
-
-                NSAttributedString attrTitle = new NSAttributedString();
-                attrTitle.initWithString(item.title(), attrs);
-                item.setAttributedTitle(attrTitle);
-            }
-        } catch (Throwable t) {
-            // Ignore, likely not running on Cocoa or incompatible SWT version
-        }
-    }
-
     private void onMove(int direction) {
         if (selectedIndex < 0) return;
         int target = selectedIndex + direction;
@@ -563,7 +345,7 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         if (index < 0 || index >= entries.size()) return;
         BodyEntry entry = entries.get(index);
         
-        updateSyntaxLanguage(entry.language);
+        editorConfigurator.updateSyntaxLanguage(entry.language, codeText);
         if (completionProvider != null) completionProvider.setLanguage(entry.language);
 
         suppressListener = true;
@@ -582,79 +364,5 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         removeButton.setEnabled(hasSel);
         upButton.setEnabled(hasSel && selectedIndex > 0);
         downButton.setEnabled(hasSel && selectedIndex < entries.size() - 1);
-    }
-
-    // ---- Helpers ----
-
-    private static Button createPushButton(Composite parent, String label) {
-        Button btn = new Button(parent, SWT.PUSH);
-        btn.setText(label);
-        btn.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-        return btn;
-    }
-
-    private static boolean isDarkTheme(Composite parent) {
-        Display display = parent.getDisplay();
-        
-        // 1. Check newer Eclipse API for system dark theme (fixes Mac SWT bugs)
-        try {
-            Boolean isDark = (Boolean) display.getClass().getMethod("isSystemDarkTheme").invoke(display);
-            if (isDark != null) return isDark;
-        } catch (Throwable t) {}
-
-        // 2. Check Eclipse E4 CSS Theme
-        try {
-            Object themeEngine = display.getData("org.eclipse.e4.ui.css.swt.theme");
-            if (themeEngine != null) {
-                Object activeTheme = themeEngine.getClass().getMethod("getActiveTheme").invoke(themeEngine);
-                if (activeTheme != null) {
-                    String themeId = (String) activeTheme.getClass().getMethod("getId").invoke(activeTheme);
-                    if (themeId != null) {
-                        String lower = themeId.toLowerCase();
-                        if (lower.contains("dark")) return true;
-                        if (lower.contains("light")) return false;
-                    }
-                }
-            }
-        } catch (Throwable t) {}
-        
-        // 3. Fallback for macOS: Check native OS preference
-        String osName = System.getProperty("os.name").toLowerCase();
-        if (osName.contains("mac")) {
-            try {
-                Process p = Runtime.getRuntime().exec(new String[] {"defaults", "read", "-g", "AppleInterfaceStyle"});
-                java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
-                String line = reader.readLine();
-                if (line != null && line.trim().equalsIgnoreCase("Dark")) {
-                    return true;
-                }
-            } catch (Throwable t) {}
-        }
-        
-        // 4. Fallback: Check parent composite background color
-        Color bg = parent.getBackground();
-        if (bg != null) {
-            double brightness = getBrightness(bg);
-            if (brightness < 128) return true;
-        }
-        
-        return false;
-    }
-
-    private static double getBrightness(Color c) {
-        return (c.getRed() * 299.0 + c.getGreen() * 587.0 + c.getBlue() * 114.0) / 1000.0;
-    }
-
-    // ---- Inner types ----
-    private class BodyEntryLabelProvider extends LabelProvider {
-        @Override
-        public String getText(Object element) {
-            if (!(element instanceof BodyEntry entry)) return super.getText(element);
-            int idx = entries.indexOf(entry);
-            String preview = entry.body.replace('\n', ' ').replace('\r', ' ').strip();
-            if (preview.length() > 60) preview = preview.substring(0, 57) + "...";
-            String lang = entry.language.isBlank() ? "(no language)" : entry.language;
-            return String.format("%d: [%s]  %s", idx, lang, preview);
-        }
     }
 }

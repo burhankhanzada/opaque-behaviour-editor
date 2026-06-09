@@ -325,7 +325,7 @@ public class CodeCompletionProvider {
 
         for (String word : completionWords) {
             if (word.toLowerCase().startsWith(lower)) {
-                if (allowedMembers != null && !allowedMembers.contains(word)) continue;
+                if (allowedMembers != null && !allowedMembers.contains(word) && !word.startsWith("create")) continue;
                 if (!isMemberAccess && word.startsWith("create")) continue;
                 if (!matches.contains(word)) {
                     matches.add(word);

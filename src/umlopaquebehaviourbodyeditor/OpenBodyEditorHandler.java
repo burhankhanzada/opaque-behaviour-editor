@@ -73,6 +73,7 @@ public class OpenBodyEditorHandler extends AbstractHandler {
         // ---- collect model context types and completion words ----
         Set<String> contextTypes = new HashSet<>();
         UmlModelDictionary dictionary = new UmlModelDictionary();
+        dictionary.autocompleteWords.add("factory");
         
         IWorkbenchPart activePart = HandlerUtil.getActivePart(event);
         org.eclipse.jface.viewers.ISelectionProvider selectionProvider = 
@@ -88,6 +89,14 @@ public class OpenBodyEditorHandler extends AbstractHandler {
                         contextTypes.add(typeName);
                         dictionary.autocompleteWords.add(typeName);
                         dictionary.globalElements.put(typeName, t);
+                    }
+                }
+                
+                if (obj instanceof org.eclipse.uml2.uml.Class c) {
+                    String className = c.getName();
+                    if (className != null && !className.isBlank()) {
+                        dictionary.autocompleteWords.add("create" + className);
+                        dictionary.globalElements.put("create" + className, c);
                     }
                 }
                 
@@ -155,13 +164,25 @@ public class OpenBodyEditorHandler extends AbstractHandler {
                         dictionary.autocompleteWords.add("set" + cap);
                         dictionary.globalElements.put("set" + cap, p);
                         
-                        if (p.getType() != null && p.getOwner() instanceof org.eclipse.uml2.uml.NamedElement owner) {
-                            String typeName = p.getType().getName();
-                            String ownerName = owner.getName();
-                            if (typeName != null && ownerName != null) {
-                                dictionary.autocompleteWords.add("create" + typeName + "_as_" + pName + "_in_" + ownerName);
-                                dictionary.globalElements.put("create" + typeName + "_as_" + pName + "_in_" + ownerName, p);
+                        String typeName = p.getType() != null ? p.getType().getName() : null;
+                        String ownerName = null;
+                        
+                        if (p.getClass_() != null) {
+                            ownerName = p.getClass_().getName();
+                        } else if (p.getAssociation() != null) {
+                            for (org.eclipse.uml2.uml.Property end : p.getAssociation().getMemberEnds()) {
+                                if (end != p && end.getType() != null) {
+                                    ownerName = end.getType().getName();
+                                    break;
+                                }
                             }
+                        } else if (p.getOwner() instanceof org.eclipse.uml2.uml.NamedElement ne) {
+                            ownerName = ne.getName();
+                        }
+                        
+                        if (typeName != null && ownerName != null) {
+                            dictionary.autocompleteWords.add("create" + typeName + "_as_" + pName + "_in_" + ownerName);
+                            dictionary.globalElements.put("create" + typeName + "_as_" + pName + "_in_" + ownerName, p);
                         }
                     }
                 }

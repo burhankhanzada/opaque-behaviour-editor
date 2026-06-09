@@ -217,7 +217,7 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
     private void createLanguageSection(Composite parent) {
         Composite row = new Composite(parent, SWT.NONE);
         row.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-        row.setLayout(new GridLayout(3, false));
+        row.setLayout(new GridLayout(6, false));
 
         Label lbl = new Label(row, SWT.NONE);
         lbl.setText("Language:");
@@ -240,6 +240,26 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
             if (codeText != null && !codeText.isDisposed()) {
                 String formatted = AutoFormatter.format(codeText.getText(), languageCombo.getText());
                 codeText.setText(formatted);
+            }
+        });
+
+        Label transLbl = new Label(row, SWT.NONE);
+        transLbl.setText("  Translate to:");
+
+        Combo targetLanguageCombo = new Combo(row, SWT.DROP_DOWN | SWT.READ_ONLY);
+        targetLanguageCombo.setItems(LanguageMapping.getAllLanguageNames());
+        if (targetLanguageCombo.getItemCount() > 0) targetLanguageCombo.select(0);
+
+        Button translateBtn = new Button(row, SWT.PUSH);
+        translateBtn.setText("Translate");
+        translateBtn.addListener(SWT.Selection, e -> {
+            if (codeText != null && !codeText.isDisposed()) {
+                String sourceLang = languageCombo.getText();
+                String targetLang = targetLanguageCombo.getText();
+                String translated = CodeTranslator.translate(codeText.getText(), sourceLang, targetLang);
+                
+                codeText.setText(translated);
+                languageCombo.setText(targetLang); // Update main language combo
             }
         });
     }

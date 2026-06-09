@@ -36,6 +36,7 @@ import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Shell;
+import org.eclipse.swt.internal.cocoa.*;
 
 /**
  * Dialog for editing the body entries of a UML OpaqueBehaviour.
@@ -225,6 +226,8 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         languageCombo = new Combo(row, SWT.DROP_DOWN | SWT.READ_ONLY);
         languageCombo.setItems(LanguageMapping.getAllLanguageNames());
         languageCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        if (isDarkTheme(parent)) fixComboDarkTheme(languageCombo);
+        
         languageCombo.addModifyListener(e -> {
             if (selectedIndex >= 0 && selectedIndex < entries.size() && !suppressListener) {
                 entries.get(selectedIndex).language = languageCombo.getText();
@@ -249,6 +252,7 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         Combo targetLanguageCombo = new Combo(row, SWT.DROP_DOWN | SWT.READ_ONLY);
         targetLanguageCombo.setItems(LanguageMapping.getAllLanguageNames());
         if (targetLanguageCombo.getItemCount() > 0) targetLanguageCombo.select(0);
+        if (isDarkTheme(parent)) fixComboDarkTheme(targetLanguageCombo);
 
         Button translateBtn = new Button(row, SWT.PUSH);
         translateBtn.setText("Translate");
@@ -266,6 +270,9 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
             }
         });
     }
+
+    // Helper method no longer needed for Combo
+    // private void setLanguageComboText(String lang) {}
 
     /**
      * Creates the code editor section containing a StyledText widget wrapped in a SourceViewer.
@@ -492,6 +499,42 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
             loadEntry(newIdx);
         }
         updateButtonStates();
+    }
+
+    /**
+     * WORKAROUND: Eclipse Mac Dark Theme Bug.
+     * In Eclipse Dark Theme on macOS, SWT.READ_ONLY Combos render their dropdown menus
+     * natively but fail to invert the text color, making the items look black/dark-grey 
+     * on a dark background (appearing disabled). 
+     * 
+     * This method uses internal Cocoa bindings to explicitly rewrite the NSAttributedString 
+     * foreground color to pure white on the underlying NSPopUpButton menu items.
+     */
+    private static void fixComboDarkTheme(Combo combo) {
+        if (!System.getProperty("os.name").toLowerCase().contains("mac")) return;
+
+        try {
+            NSPopUpButton button = new NSPopUpButton(combo.view.id);
+            NSMenu menu = button.menu();
+            if (menu == null) return;
+            NSArray items = menu.itemArray();
+
+            long count = items.count();
+            for (int i = 0; i < count; i++) {
+                NSMenuItem item = new NSMenuItem(items.objectAtIndex(i));
+
+                // Build white attributed string
+                NSMutableDictionary attrs = NSMutableDictionary.dictionaryWithCapacity(1);
+                NSColor white = NSColor.colorWithDeviceRed(1.0, 1.0, 1.0, 1.0);
+                attrs.setObject(white, OS.NSForegroundColorAttributeName);
+
+                NSAttributedString attrTitle = new NSAttributedString();
+                attrTitle.initWithString(item.title(), attrs);
+                item.setAttributedTitle(attrTitle);
+            }
+        } catch (Throwable t) {
+            // Ignore, likely not running on Cocoa or incompatible SWT version
+        }
     }
 
     private void onMove(int direction) {

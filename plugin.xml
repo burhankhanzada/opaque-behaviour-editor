@@ -16,7 +16,7 @@
             class="umlopaquebehaviourbodyeditor.OpenBodyEditorHandler"/>
    </extension>
 
-   <!-- Context menu — always visible on any right-click, no conditions -->
+   <!-- Context menu — only visible when an OpaqueBehavior is selected -->
    <extension point="org.eclipse.ui.menus">
       <menuContribution
             allPopups="true"

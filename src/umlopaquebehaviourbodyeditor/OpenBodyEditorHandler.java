@@ -30,6 +30,9 @@ import org.eclipse.uml2.uml.UMLPackage;
 /**
  * Command handler that opens the {@link OpaqueBehaviorBodyDialog}
  * for the currently selected {@link OpaqueBehavior} element.
+ * 
+ * This handler is registered in plugin.xml and serves as the entry point
+ * when the user clicks "Edit Body with Code Editor..." from the context menu.
  */
 public class OpenBodyEditorHandler extends AbstractHandler {
 
@@ -47,7 +50,8 @@ public class OpenBodyEditorHandler extends AbstractHandler {
     }
 
     private Object doExecute(ExecutionEvent event, Shell shell) {
-        // ---- resolve selection ----
+        // ---- 1. Resolve Selection ----
+        // Extract the selected object from the Eclipse UI context
         ISelection selection = HandlerUtil.getCurrentSelection(event);
         if (!(selection instanceof IStructuredSelection structured) || structured.isEmpty()) {
             MessageDialog.openInformation(shell, "Body Editor",
@@ -65,12 +69,16 @@ public class OpenBodyEditorHandler extends AbstractHandler {
             return null;
         }
 
-        // ---- open dialog ----
+        // ---- 2. Extract Existing Data ----
+        // Get the current bodies, languages, and name to pre-populate the dialog
         List<String> bodies    = new ArrayList<>(behavior.getBodies());
         List<String> languages = new ArrayList<>(behavior.getLanguages());
         String       name      = behavior.getName();
 
-        // ---- collect model context types and completion words ----
+        // ---- 3. Collect Model Context Types and Completion Words ----
+        // We traverse the entire UML model to collect class names, property names, 
+        // and operation names. These are used to populate the auto-completion popup 
+        // and semantic highlighter dictionaries.
         Set<String> contextTypes = new HashSet<>();
         UmlModelDictionary dictionary = new UmlModelDictionary();
         dictionary.autocompleteWords.add("factory");
@@ -80,9 +88,11 @@ public class OpenBodyEditorHandler extends AbstractHandler {
             (activePart != null && activePart.getSite() != null) ? activePart.getSite().getSelectionProvider() : null;
 
         if (behavior.getModel() != null) {
+            // Iterate over every element in the UML model
             TreeIterator<EObject> it = behavior.getModel().eAllContents();
             while (it.hasNext()) {
                 EObject obj = it.next();
+                // Handle general UML Types (Classes, Interfaces, PrimitiveTypes, etc.)
                 if (obj instanceof org.eclipse.uml2.uml.Type t) {
                     String typeName = t.getName();
                     if (typeName != null && !typeName.isBlank()) {
@@ -92,6 +102,7 @@ public class OpenBodyEditorHandler extends AbstractHandler {
                     }
                 }
                 
+                // Handle UML Classes specifically to add MDE4CPP factory "create" methods
                 if (obj instanceof org.eclipse.uml2.uml.Class c) {
                     String className = c.getName();
                     if (className != null && !className.isBlank()) {
@@ -100,11 +111,14 @@ public class OpenBodyEditorHandler extends AbstractHandler {
                     }
                 }
                 
+                // Handle Classifiers to extract their properties and operations for member-access completion
                 if (obj instanceof org.eclipse.uml2.uml.Classifier classifier) {
                     String className = classifier.getName();
                     if (className != null && !className.isBlank()) {
                         Map<String, String> members = dictionary.typeMembers.computeIfAbsent(className, k -> new HashMap<>());
                         Map<String, EObject> elemMembers = dictionary.classElements.computeIfAbsent(className, k -> new HashMap<>());
+                        
+                        // Register attributes (properties) as members, including their generated getters/setters
                         for (org.eclipse.uml2.uml.Property p : classifier.getAllAttributes()) {
                             String pName = p.getName();
                             if (pName != null && !pName.isBlank()) {
@@ -126,6 +140,7 @@ public class OpenBodyEditorHandler extends AbstractHandler {
                                 elemMembers.put("set" + cap, p);
                             }
                         }
+                        // Register operations (methods) as members
                         for (org.eclipse.uml2.uml.Operation op : classifier.getAllOperations()) {
                             String opName = op.getName();
                             if (opName != null && !opName.isBlank()) {
@@ -146,6 +161,7 @@ public class OpenBodyEditorHandler extends AbstractHandler {
                     }
                 }
                 
+                // Register operations as global words (for standalone function calls or auto-completion fallback)
                 if (obj instanceof org.eclipse.uml2.uml.Operation op) {
                     String opName = op.getName();
                     if (opName != null && !opName.isBlank()) {
@@ -153,6 +169,7 @@ public class OpenBodyEditorHandler extends AbstractHandler {
                         dictionary.globalElements.put(opName, op);
                     }
                 }
+                // Register properties as global words and generate their specific factory 'create_as' methods
                 if (obj instanceof org.eclipse.uml2.uml.Property p) {
                     String pName = p.getName();
                     if (pName != null && !pName.isBlank()) {
@@ -167,6 +184,8 @@ public class OpenBodyEditorHandler extends AbstractHandler {
                         String typeName = p.getType() != null ? p.getType().getName() : null;
                         String ownerName = null;
                         
+                        // Determine the correct owner name for the property.
+                        // Properties can be owned directly by a Class or by an Association.
                         if (p.getClass_() != null) {
                             ownerName = p.getClass_().getName();
                         } else if (p.getAssociation() != null) {
@@ -189,6 +208,7 @@ public class OpenBodyEditorHandler extends AbstractHandler {
             }
         }
 
+        // ---- 4. Open the Editor Dialog ----
         OpaqueBehaviorBodyDialog dialog =
                 new OpaqueBehaviorBodyDialog(shell, bodies, languages, name, contextTypes, dictionary, selectionProvider);
 
@@ -196,7 +216,7 @@ public class OpenBodyEditorHandler extends AbstractHandler {
             return null;
         }
 
-        // ---- apply changes ----
+        // ---- 5. Apply Changes via EMF Command Framework ----
         List<String> newBodies    = dialog.getBodies();
         List<String> newLanguages = dialog.getLanguages();
 

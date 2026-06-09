@@ -282,6 +282,14 @@ public class CodeCompletionProvider {
         showPopup(matches);
     }
 
+    /**
+     * Filters the global dictionary and document words to find matches that start
+     * with the current prefix. Also handles "member access" context (e.g. `obj->` or `obj.`)
+     * by extracting the type of `obj` and only returning its properties and operations.
+     * 
+     * @param prefix the text typed so far (e.g. "crea")
+     * @return a list of suggestions up to MAX_PROPOSALS
+     */
     private List<String> findMatches(String prefix) {
         List<String> matches = new ArrayList<>();
         String lower = prefix.toLowerCase();
@@ -302,6 +310,8 @@ public class CodeCompletionProvider {
         
         if (isMemberAccess) {
             allowedMembers = new TreeSet<>();
+            
+            // By default, allow ANY member from any type as a fallback
             for (Map<String, String> members : dictionary.typeMembers.values()) {
                 allowedMembers.addAll(members.keySet());
             }
@@ -309,15 +319,18 @@ public class CodeCompletionProvider {
                 for (String m : UmlModelValidator.COMMON_METHODS) allowedMembers.add(m);
             }
             
+            // If we can resolve the exact type of the object we're calling a method on,
+            // restrict the allowed members exclusively to that type.
             String contextType = resolveContextType();
             if (contextType != null) {
-                // If it's a known MDE4CPP collection, supply collection methods
+                // Special handling for MDE4CPP collections (Bag, Set, Sequence, etc.)
                 if (contextType.startsWith("Bag<") || contextType.startsWith("Set<") || 
                     contextType.startsWith("OrderedSet<") || contextType.startsWith("Sequence<") ||
                     contextType.startsWith("Union<") || contextType.startsWith("SubsetUnion<")) {
                     allowedMembers.clear(); // Only suggest collection methods
                     for (String m : UmlModelValidator.MDE4CPP_COLLECTION_METHODS) allowedMembers.add(m);
                 } else if (dictionary.typeMembers.containsKey(contextType)) {
+                    // Exact type found, replace fallback with specific members
                     allowedMembers = new TreeSet<>(dictionary.typeMembers.get(contextType).keySet());
                 }
             }
@@ -360,6 +373,10 @@ public class CodeCompletionProvider {
         return matches;
     }
     
+    /**
+     * Checks if the cursor is immediately after a member access token (`.` or `->`).
+     * This tells the auto-completer to only suggest properties or operations.
+     */
     private boolean isMemberAccessContext() {
         int caretOffset = styledText.getCaretOffset();
         String text = styledText.getText();
@@ -386,6 +403,10 @@ public class CodeCompletionProvider {
         return resolveContextTypeFromText(textBeforeCaret);
     }
 
+    /**
+     * Parses the C++ expression preceding the caret to determine its return type.
+     * e.g., `library->getBooks()->front()->` returns the type of `Book`.
+     */
     private String resolveContextTypeFromText(String textBeforeCaret) {
         if (textBeforeCaret.endsWith("->")) {
             textBeforeCaret = textBeforeCaret.substring(0, textBeforeCaret.length() - 2);

@@ -235,6 +235,10 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         });
     }
 
+    /**
+     * Creates the code editor section containing a StyledText widget wrapped in a SourceViewer.
+     * This avoids heavy JFace Text dependencies while still allowing TM4E integration.
+     */
     private void createCodeSection(Composite parent) {
         Label lbl = new Label(parent, SWT.NONE);
         lbl.setText("Body code:");
@@ -281,7 +285,7 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
             separatorColor = new Color(new RGB(200, 200, 200));
         }
 
-        // Draw line numbers
+        // Draw line numbers inside the reserved left margin
         codeText.addPaintListener(e -> {
             int topIndex = codeText.getTopIndex();
             int lineHeight = codeText.getLineHeight();
@@ -316,7 +320,7 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         methodColor = new org.eclipse.swt.graphics.Color(codeText.getDisplay(), 220, 220, 170);
         variableColor = new org.eclipse.swt.graphics.Color(codeText.getDisplay(), 156, 220, 254);
 
-        // TM4E Reconciler
+        // Initialize TM4E Reconciler for generic syntax highlighting (keywords, strings, etc.)
         try {
             tmReconciler = new TMPresentationReconciler();
             sourceViewer.configure(new SourceViewerConfiguration() {
@@ -334,6 +338,8 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         completionProvider.setHyperlinkElements(selectionProvider);
 
         if (sourceViewer instanceof org.eclipse.jface.text.ITextViewerExtension4 ext4) {
+            // Apply semantic highlighting (custom colors for UML types, methods, and variables)
+            // AFTER the TM4E grammar has been applied, overriding it where necessary.
             ext4.addTextPresentationListener(new org.eclipse.jface.text.ITextPresentationListener() {
                 @Override
                 public void applyTextPresentation(org.eclipse.jface.text.TextPresentation textPresentation) {

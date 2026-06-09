@@ -1,4 +1,9 @@
-package umlopaquebehaviourbodyeditor;
+package umlopaquebehaviourbodyeditor.model;
+
+import umlopaquebehaviourbodyeditor.ui.*;
+import umlopaquebehaviourbodyeditor.editor.*;
+import umlopaquebehaviourbodyeditor.model.*;
+
 
 import java.util.Map;
 import java.util.TreeSet;

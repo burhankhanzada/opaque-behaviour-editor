@@ -1,4 +1,9 @@
-package umlopaquebehaviourbodyeditor;
+package umlopaquebehaviourbodyeditor.editor;
+
+import umlopaquebehaviourbodyeditor.ui.*;
+import umlopaquebehaviourbodyeditor.editor.*;
+import umlopaquebehaviourbodyeditor.model.*;
+
 
 import java.util.List;
 import org.eclipse.jface.text.Document;

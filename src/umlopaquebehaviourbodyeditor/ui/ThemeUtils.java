@@ -1,4 +1,9 @@
-package umlopaquebehaviourbodyeditor;
+package umlopaquebehaviourbodyeditor.ui;
+
+import umlopaquebehaviourbodyeditor.ui.*;
+import umlopaquebehaviourbodyeditor.editor.*;
+import umlopaquebehaviourbodyeditor.model.*;
+
 
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Color;

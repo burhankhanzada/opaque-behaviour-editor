@@ -1,4 +1,9 @@
-package umlopaquebehaviourbodyeditor;
+package umlopaquebehaviourbodyeditor.ui;
+
+import umlopaquebehaviourbodyeditor.ui.*;
+import umlopaquebehaviourbodyeditor.editor.*;
+import umlopaquebehaviourbodyeditor.model.*;
+
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +48,10 @@ import org.eclipse.swt.widgets.Shell;
  * keyword-based syntax highlighting — no JFace Text dependency.
  */
 public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
+
+    private List<BodyEntry> entries = new ArrayList<>();
+    private final String behaviourName;
+    private int selectedIndex = -1;
 
     private TableViewer entryViewer;
     private SourceViewer sourceViewer;
@@ -319,6 +328,8 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
             entryViewer.getTable().select(newIdx);
             loadEntry(newIdx);
         }
+    }
+
     private void onMove(int direction) {
         if (selectedIndex < 0) return;
         int target = selectedIndex + direction;

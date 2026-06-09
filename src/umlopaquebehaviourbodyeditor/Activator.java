@@ -1,5 +1,10 @@
 package umlopaquebehaviourbodyeditor;
 
+import umlopaquebehaviourbodyeditor.ui.*;
+import umlopaquebehaviourbodyeditor.editor.*;
+import umlopaquebehaviourbodyeditor.model.*;
+
+
 import org.eclipse.ui.plugin.AbstractUIPlugin;
 import org.osgi.framework.BundleContext;
 

@@ -1,9 +1,10 @@
-package umlopaquebehaviourbodyeditor;
+package umlopaquebehaviourbodyeditor.model;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import umlopaquebehaviourbodyeditor.LanguageMapping.LanguageDef;
+import umlopaquebehaviourbodyeditor.editor.LanguageMapping.LanguageDef;
+import umlopaquebehaviourbodyeditor.editor.*;
 
 public class UmlModelValidator {
 

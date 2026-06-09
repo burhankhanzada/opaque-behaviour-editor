@@ -1,4 +1,9 @@
-package umlopaquebehaviourbodyeditor;
+package umlopaquebehaviourbodyeditor.model;
+
+import umlopaquebehaviourbodyeditor.ui.*;
+import umlopaquebehaviourbodyeditor.editor.*;
+import umlopaquebehaviourbodyeditor.model.*;
+
 
 /**
  * Represents a range of text within the editor, used primarily for 

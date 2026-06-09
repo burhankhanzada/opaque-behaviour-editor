@@ -1,10 +1,11 @@
-package umlopaquebehaviourbodyeditor;
+package umlopaquebehaviourbodyeditor.editor;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import umlopaquebehaviourbodyeditor.LanguageMapping.LanguageDef;
+import umlopaquebehaviourbodyeditor.editor.LanguageMapping.LanguageDef;
+import umlopaquebehaviourbodyeditor.model.*;
 
 public class SemanticHighlighter {
 

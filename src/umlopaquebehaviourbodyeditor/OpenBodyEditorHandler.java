@@ -1,5 +1,10 @@
 package umlopaquebehaviourbodyeditor;
 
+import umlopaquebehaviourbodyeditor.ui.*;
+import umlopaquebehaviourbodyeditor.editor.*;
+import umlopaquebehaviourbodyeditor.model.*;
+
+
 import java.util.ArrayList;
 import java.util.List;
 

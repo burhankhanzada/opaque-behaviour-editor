@@ -382,6 +382,8 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
                     
                     // Errors
                     java.util.List<TextRange> errors = modelValidator.validateUMLMemberAccess(codeText.getText(), LanguageMapping.getLanguageDef(languageCombo.getText()));
+                    errors.addAll(modelValidator.validateSyntax(codeText.getText(), LanguageMapping.getLanguageDef(languageCombo.getText())));
+                    
                     for (TextRange err : errors) {
                         org.eclipse.swt.custom.StyleRange style = new org.eclipse.swt.custom.StyleRange(err.offset, err.length, null, null);
                         style.underline = true;

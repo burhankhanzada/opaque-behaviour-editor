@@ -77,6 +77,90 @@ public class UmlModelValidator {
         return errors;
     }
 
+    /**
+     * Validates basic syntax like unmatched brackets.
+     */
+    public List<TextRange> validateSyntax(String text, LanguageDef currentLangDef) {
+        List<TextRange> errors = new ArrayList<>();
+        if (text == null || text.isEmpty()) return errors;
+
+        java.util.Stack<Integer> openParen = new java.util.Stack<>();
+        java.util.Stack<Integer> openBrace = new java.util.Stack<>();
+        java.util.Stack<Integer> openBracket = new java.util.Stack<>();
+
+        boolean inString = false;
+        boolean inChar = false;
+        boolean inSingleComment = false;
+        boolean inMultiComment = false;
+
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            char next = (i + 1 < text.length()) ? text.charAt(i + 1) : '\0';
+            char prev = (i > 0) ? text.charAt(i - 1) : '\0';
+
+            if (inSingleComment) {
+                if (c == '\n') inSingleComment = false;
+                continue;
+            }
+            if (inMultiComment) {
+                if (c == '*' && next == '/') {
+                    inMultiComment = false;
+                    i++;
+                }
+                continue;
+            }
+            if (inString) {
+                if (c == '"' && prev != '\\') inString = false;
+                continue;
+            }
+            if (inChar) {
+                if (c == '\'' && prev != '\\') inChar = false;
+                continue;
+            }
+
+            if (c == '/' && next == '/') {
+                inSingleComment = true;
+                i++;
+                continue;
+            }
+            if (c == '/' && next == '*') {
+                inMultiComment = true;
+                i++;
+                continue;
+            }
+            if (c == '"') {
+                inString = true;
+                continue;
+            }
+            if (c == '\'') {
+                inChar = true;
+                continue;
+            }
+
+            if (c == '(') openParen.push(i);
+            else if (c == '{') openBrace.push(i);
+            else if (c == '[') openBracket.push(i);
+            else if (c == ')') {
+                if (openParen.isEmpty()) errors.add(new TextRange(i, 1, "Unmatched closing ')'"));
+                else openParen.pop();
+            }
+            else if (c == '}') {
+                if (openBrace.isEmpty()) errors.add(new TextRange(i, 1, "Unmatched closing '}'"));
+                else openBrace.pop();
+            }
+            else if (c == ']') {
+                if (openBracket.isEmpty()) errors.add(new TextRange(i, 1, "Unmatched closing ']'"));
+                else openBracket.pop();
+            }
+        }
+
+        while (!openParen.isEmpty()) errors.add(new TextRange(openParen.pop(), 1, "Unclosed opening '('"));
+        while (!openBrace.isEmpty()) errors.add(new TextRange(openBrace.pop(), 1, "Unclosed opening '{'"));
+        while (!openBracket.isEmpty()) errors.add(new TextRange(openBracket.pop(), 1, "Unclosed opening '['"));
+
+        return errors;
+    }
+
     private String resolveContextTypeFromText(String textBefore) {
         java.util.regex.Pattern p1 = java.util.regex.Pattern.compile("std::(?:weak|shared|unique)_ptr<\\s*([A-Za-z0-9_:<>,\\s]+)\\s*>\\s+([A-Za-z0-9_]+)\\b");
         java.util.regex.Matcher m1 = p1.matcher(textBefore);

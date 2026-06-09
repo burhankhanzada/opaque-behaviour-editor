@@ -258,7 +258,10 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
                 String targetLang = targetLanguageCombo.getText();
                 String translated = CodeTranslator.translate(codeText.getText(), sourceLang, targetLang);
                 
-                codeText.setText(translated);
+                // Auto-format the translated code using the target language's rules
+                String formatted = AutoFormatter.format(translated, targetLang);
+                
+                codeText.setText(formatted);
                 languageCombo.setText(targetLang); // Update main language combo
             }
         });

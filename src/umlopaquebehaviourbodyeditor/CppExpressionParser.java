@@ -1,5 +1,7 @@
 package umlopaquebehaviourbodyeditor;
 
+import java.util.Map;
+
 /**
  * Utility class to parse C++ expressions from a text editor and determine the context
  * or return type for auto-completion and syntax highlighting.

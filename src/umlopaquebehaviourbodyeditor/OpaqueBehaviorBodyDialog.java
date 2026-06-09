@@ -217,7 +217,7 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
     private void createLanguageSection(Composite parent) {
         Composite row = new Composite(parent, SWT.NONE);
         row.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-        row.setLayout(new GridLayout(2, false));
+        row.setLayout(new GridLayout(3, false));
 
         Label lbl = new Label(row, SWT.NONE);
         lbl.setText("Language:");
@@ -231,6 +231,15 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
                 updateSyntaxLanguage(languageCombo.getText());
                 if (completionProvider != null) completionProvider.setLanguage(languageCombo.getText());
                 entryViewer.refresh();
+            }
+        });
+
+        Button formatBtn = new Button(row, SWT.PUSH);
+        formatBtn.setText("Format Code");
+        formatBtn.addListener(SWT.Selection, e -> {
+            if (codeText != null && !codeText.isDisposed()) {
+                String formatted = AutoFormatter.format(codeText.getText(), languageCombo.getText());
+                codeText.setText(formatted);
             }
         });
     }
@@ -280,7 +289,6 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
 
     private void setupEditorFontAndColors(Display display) {
         // Monospace font
-        Display display = parent.getDisplay();
         monoFont = new Font(display, new FontData("Menlo", 12, SWT.NORMAL));
         codeText.setFont(monoFont);
         codeText.setTabs(4);

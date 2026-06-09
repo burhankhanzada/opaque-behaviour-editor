@@ -236,6 +236,7 @@ public class CodeCompletionProvider {
     }
 
     private void setupHyperlinkNavigation() {
+        styledText.addKeyListener(new KeyAdapter() {
             @Override
             public void keyReleased(KeyEvent e) {
                 if ((e.keyCode & SWT.MODIFIER_MASK) == SWT.MOD1 || e.keyCode == SWT.COMMAND || e.keyCode == SWT.CTRL) {

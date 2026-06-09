@@ -110,11 +110,15 @@ public class OpenBodyEditorHandler extends AbstractHandler {
 
         EditingDomain domain = AdapterFactoryEditingDomain.getEditingDomainFor(behavior);
         if (domain != null) {
-            CompoundCommand cmd = new CompoundCommand("Edit OpaqueBehaviour Body");
-            cmd.append(SetCommand.create(domain, behavior,
-                    UMLPackage.Literals.OPAQUE_BEHAVIOR__BODY, newBodies));
-            cmd.append(SetCommand.create(domain, behavior,
-                    UMLPackage.Literals.OPAQUE_BEHAVIOR__LANGUAGE, newLanguages));
+            org.eclipse.emf.edit.command.ChangeCommand cmd = new org.eclipse.emf.edit.command.ChangeCommand(behavior) {
+                @Override
+                protected void doExecute() {
+                    behavior.getBodies().clear();
+                    behavior.getBodies().addAll(newBodies);
+                    behavior.getLanguages().clear();
+                    behavior.getLanguages().addAll(newLanguages);
+                }
+            };
             domain.getCommandStack().execute(cmd);
         } else {
             behavior.getBodies().clear();

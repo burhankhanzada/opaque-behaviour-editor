@@ -288,7 +288,7 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
             }
         });
 
-        setupEditorFontAndColors(parent.getDisplay());
+        setupEditorFontAndColors(parent);
         setupLineNumbers();
         setupSyntaxHighlighting();
 
@@ -307,7 +307,8 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         });
     }
 
-    private void setupEditorFontAndColors(Display display) {
+    private void setupEditorFontAndColors(Composite parent) {
+        Display display = parent.getDisplay();
         // Monospace font
         monoFont = new Font(display, new FontData("Menlo", 12, SWT.NORMAL));
         codeText.setFont(monoFont);
@@ -317,25 +318,53 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         codeText.setMargins(45, 5, 5, 5);
 
         // Theme-specific colors
-        boolean dark = isDarkTheme(display);
+        boolean dark = isDarkTheme(parent);
         final Color lineNumColor;
         final Color separatorColor;
         
         if (dark) {
-            codeText.setBackground(new Color(new RGB(30, 30, 30)));
-            codeText.setForeground(new Color(new RGB(212, 212, 212)));
-            codeText.setSelectionBackground(new Color(new RGB(38, 79, 120)));
-            codeText.setSelectionForeground(new Color(new RGB(255, 255, 255)));
-            lineNumColor = new Color(new RGB(133, 133, 133));
-            separatorColor = new Color(new RGB(64, 64, 64));
+            Color darkBg = new Color(display, new RGB(30, 30, 30));
+            Color darkFg = new Color(display, new RGB(212, 212, 212));
+            Color darkSelBg = new Color(display, new RGB(38, 79, 120));
+            Color darkSelFg = new Color(display, new RGB(255, 255, 255));
+            
+            // TODO: Fix this issue upstream in the Eclipse IDE itself.
+            // WORKAROUND: The Eclipse E4 CSS engine runs a delayed layout pass on macOS that 
+            // aggressively overwrites StyledText backgrounds back to the OS-default grey.
+            // Trick 1: We assign a dummy CSS ID so the engine's generic StyledText rules ignore this widget.
+            codeText.setData("org.eclipse.e4.ui.css.id", "UMLOpaqueBehaviourEditorText");
+            
+            codeText.setBackground(darkBg);
+            codeText.setForeground(darkFg);
+            codeText.setSelectionBackground(darkSelBg);
+            codeText.setSelectionForeground(darkSelFg);
+            
+            // Trick 2: We forcefully re-apply the background asynchronously (after the event loop processes 
+            // the initial Shell layout) to guarantee our dark background survives any late CSS styling.
+            display.asyncExec(() -> {
+                if (codeText != null && !codeText.isDisposed()) {
+                    codeText.setBackground(darkBg);
+                    codeText.setForeground(darkFg);
+                    codeText.setSelectionBackground(darkSelBg);
+                    codeText.setSelectionForeground(darkSelFg);
+                }
+            });
+            
+            lineNumColor = new Color(display, new RGB(133, 133, 133));
+            separatorColor = new Color(display, new RGB(64, 64, 64));
+            
+            umlTypeColor = new org.eclipse.swt.graphics.Color(display, 78, 201, 176);
+            methodColor = new org.eclipse.swt.graphics.Color(display, 220, 220, 170);
+            variableColor = new org.eclipse.swt.graphics.Color(display, 156, 220, 254);
         } else {
-            lineNumColor = new Color(new RGB(43, 145, 175));
-            separatorColor = new Color(new RGB(200, 200, 200));
+            lineNumColor = new Color(display, new RGB(43, 145, 175));
+            separatorColor = new Color(display, new RGB(200, 200, 200));
+            
+            // VS Code light theme semantic colors
+            umlTypeColor = new org.eclipse.swt.graphics.Color(display, 38, 127, 153); // Dark teal (#267f99)
+            methodColor = new org.eclipse.swt.graphics.Color(display, 121, 94, 38);   // Dark yellow/brown (#795e26)
+            variableColor = new org.eclipse.swt.graphics.Color(display, 0, 16, 128);  // Dark blue (#001080)
         }
-
-        umlTypeColor = new org.eclipse.swt.graphics.Color(codeText.getDisplay(), 78, 201, 176);
-        methodColor = new org.eclipse.swt.graphics.Color(codeText.getDisplay(), 220, 220, 170);
-        variableColor = new org.eclipse.swt.graphics.Color(codeText.getDisplay(), 156, 220, 254);
 
         // Clean up colors
         codeText.addDisposeListener(e -> {
@@ -487,6 +516,10 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         selectedIndex = index;
         if (index < 0 || index >= entries.size()) return;
         BodyEntry entry = entries.get(index);
+        
+        updateSyntaxLanguage(entry.language);
+        if (completionProvider != null) completionProvider.setLanguage(entry.language);
+
         suppressListener = true;
         try {
             sourceViewer.getDocument().set(entry.body);
@@ -494,8 +527,7 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         } finally {
             suppressListener = false;
         }
-        updateSyntaxLanguage(entry.language);
-        if (completionProvider != null) completionProvider.setLanguage(entry.language);
+        
         updateButtonStates();
     }
 
@@ -515,10 +547,56 @@ public class OpaqueBehaviorBodyDialog extends TitleAreaDialog {
         return btn;
     }
 
-    private static boolean isDarkTheme(Display display) {
-        Color bg = display.getSystemColor(SWT.COLOR_WIDGET_BACKGROUND);
-        double brightness = (bg.getRed() * 299.0 + bg.getGreen() * 587.0 + bg.getBlue() * 114.0) / 1000.0;
-        return brightness < 128;
+    private static boolean isDarkTheme(Composite parent) {
+        Display display = parent.getDisplay();
+        
+        // 1. Check newer Eclipse API for system dark theme (fixes Mac SWT bugs)
+        try {
+            Boolean isDark = (Boolean) display.getClass().getMethod("isSystemDarkTheme").invoke(display);
+            if (isDark != null) return isDark;
+        } catch (Throwable t) {}
+
+        // 2. Check Eclipse E4 CSS Theme
+        try {
+            Object themeEngine = display.getData("org.eclipse.e4.ui.css.swt.theme");
+            if (themeEngine != null) {
+                Object activeTheme = themeEngine.getClass().getMethod("getActiveTheme").invoke(themeEngine);
+                if (activeTheme != null) {
+                    String themeId = (String) activeTheme.getClass().getMethod("getId").invoke(activeTheme);
+                    if (themeId != null) {
+                        String lower = themeId.toLowerCase();
+                        if (lower.contains("dark")) return true;
+                        if (lower.contains("light")) return false;
+                    }
+                }
+            }
+        } catch (Throwable t) {}
+        
+        // 3. Fallback for macOS: Check native OS preference
+        String osName = System.getProperty("os.name").toLowerCase();
+        if (osName.contains("mac")) {
+            try {
+                Process p = Runtime.getRuntime().exec(new String[] {"defaults", "read", "-g", "AppleInterfaceStyle"});
+                java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
+                String line = reader.readLine();
+                if (line != null && line.trim().equalsIgnoreCase("Dark")) {
+                    return true;
+                }
+            } catch (Throwable t) {}
+        }
+        
+        // 4. Fallback: Check parent composite background color
+        Color bg = parent.getBackground();
+        if (bg != null) {
+            double brightness = getBrightness(bg);
+            if (brightness < 128) return true;
+        }
+        
+        return false;
+    }
+
+    private static double getBrightness(Color c) {
+        return (c.getRed() * 299.0 + c.getGreen() * 587.0 + c.getBlue() * 114.0) / 1000.0;
     }
 
     // ---- Inner types ----
